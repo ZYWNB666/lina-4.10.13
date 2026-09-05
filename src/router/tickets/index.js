@@ -20,6 +20,18 @@ export default {
   },
   children: [
     {
+      // fork 定制: 机器访问申请(原生页面)
+      path: '/tickets/machine-apply',
+      name: 'MachineApply',
+      component: () => import('@/views/machines/MachineApply'),
+      meta: {
+        title: i18n.t('MachineApply'),
+        icon: 'computer',
+        showOrganization: false,
+        permissions: []
+      }
+    },
+    {
       path: '/tickets/my-tickets',
       name: 'MyTicketList',
       component: () => import('@/views/tickets/MyTicketList'),

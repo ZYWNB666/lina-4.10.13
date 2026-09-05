@@ -37,6 +37,17 @@ export default {
       }
     },
     {
+      // fork 定制: 机器分配总览(原生页面, 需查看授权权限)
+      path: '/console/machine-allocation',
+      component: () => import('@/views/machines/MachineAllocation'),
+      name: 'MachineAllocation',
+      meta: {
+        title: i18n.t('MachineAllocation'),
+        icon: 'tree',
+        permissions: ['perms.view_assetpermission']
+      }
+    },
+    {
       path: '/console/users',
       component: empty,
       name: 'Users',
