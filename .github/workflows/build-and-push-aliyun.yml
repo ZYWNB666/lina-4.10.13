@@ -43,6 +43,9 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64
           push: true
+          # Aliyun ACR rejects BuildKit provenance attestation manifests
+          # (application/vnd.oci.empty.v1+json).
+          provenance: false
           build-args: |
             VERSION=${{ env.IMAGE_TAG }}
           tags: |
