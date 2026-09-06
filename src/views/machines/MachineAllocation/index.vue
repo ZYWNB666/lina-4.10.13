@@ -31,42 +31,75 @@
       <div slot="header" class="table-header">
         <span class="table-title">{{ $t('MachineAllocation') }}</span>
         <div class="table-actions">
+          <el-checkbox v-model="showInactive" class="inactive-switch" @change="onToggleInactive">
+            {{ $t('ShowInactive') }}
+          </el-checkbox>
           <el-input
             v-model="search" size="small" clearable
             :placeholder="$t('Search')" prefix-icon="el-icon-search"
-            style="width: 260px" @keyup.enter.native="onSearch" @clear="onSearch"
+            style="width: 240px" @keyup.enter.native="onSearch" @clear="onSearch"
           />
           <el-button size="small" icon="el-icon-refresh" style="margin-left: 8px" @click="load" />
         </div>
       </div>
 
-      <el-table v-loading="loading" :data="results" size="medium">
-        <el-table-column :label="$tc('Asset')" min-width="170">
-          <template slot-scope="{ $index }">
-            <div class="asset-name">{{ results[$index].name }}</div>
-            <div class="asset-addr">{{ results[$index].address }}</div>
+      <el-table
+        v-loading="loading" :data="results" size="medium"
+        :row-class-name="rowClass"
+      >
+        <el-table-column :label="$tc('Asset')" min-width="220">
+          <template slot-scope="{ row }">
+            <div class="asset-name">{{ row.asset_name }}</div>
+            <div class="asset-addr">{{ row.asset_address }}</div>
+            <div class="asset-node" :title="row.asset_nodes">{{ row.asset_nodes }}</div>
           </template>
         </el-table-column>
-        <el-table-column :label="$t('AssignedUsers')" min-width="420">
-          <template slot-scope="{ $index }">
-            <span
-              v-for="u in results[$index].users"
-              :key="u.user_id"
-              class="user-chip"
-              :class="chipClass(u.days_left)"
+
+        <el-table-column :label="$t('User')" width="110">
+          <template slot-scope="{ row }">{{ row.name }}</template>
+        </el-table-column>
+
+        <el-table-column :label="$t('HostUsername')" width="130">
+          <template slot-scope="{ row }">
+            <code class="host-username">{{ row.pinyin }}</code>
+          </template>
+        </el-table-column>
+
+        <el-table-column :label="$t('Approver2')" width="150" show-overflow-tooltip>
+          <template slot-scope="{ row }">{{ row.approvers || '-' }}</template>
+        </el-table-column>
+
+        <el-table-column :label="$t('PermissionID')" width="130">
+          <template slot-scope="{ row }">
+            <el-tooltip :content="row.permission_id" placement="top">
+              <code class="perm-id">{{ shortPermId(row.permission_id) }}</code>
+            </el-tooltip>
+          </template>
+        </el-table-column>
+
+        <el-table-column :label="$t('ExpireDateTime')" width="150">
+          <template slot-scope="{ row }">
+            {{ formatTime(row.date_expired) || $t('Permanent') }}
+          </template>
+        </el-table-column>
+
+        <el-table-column :label="$t('ExpireStatus')" width="120" align="center">
+          <template slot-scope="{ row }">
+            <el-tag v-if="row.status === 'revoked'" type="info" size="small">{{ $t('Revoked') }}</el-tag>
+            <el-tag v-else-if="row.status === 'expired'" type="info" size="small">{{ $t('AlreadyExpired') }}</el-tag>
+            <span v-else :class="dayClass(row.days_left)">{{ expireText(row.days_left) }}</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column :label="$t('Action')" width="90" align="center">
+          <template slot-scope="{ row }">
+            <el-button
+              v-if="canRevoke && row.status === 'active'"
+              type="danger" size="mini" plain
+              @click="onClickRevoke(row)"
             >
-              {{ u.name }}
-              <span class="chip-py">{{ u.pinyin }}</span>
-              <span class="chip-serial">{{ u.ticket_serial }}</span>
-              <span class="chip-date">{{ (u.date_expired || '').slice(0, 10) || $t('Permanent') }}</span>
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column :label="$t('ExpireStatus')" width="130" align="center">
-          <template slot-scope="{ $index }">
-            <span :class="dayClass(minDaysLeft(results[$index]))">
-              {{ expireText(minDaysLeft(results[$index])) }}
-            </span>
+              {{ $t('Revoke') }}
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -81,11 +114,39 @@
         @current-change="load"
       />
     </el-card>
+
+    <!-- 吊销确认 (fork 定制) -->
+    <el-dialog
+      :title="$t('RevokeAllocation')" :visible.sync="revoke.visible"
+      width="480px" :close-on-click-modal="false"
+    >
+      <div class="revoke-body">
+        <div class="revoke-line">
+          {{ $t('User') }}: <b>{{ revoke.entry.name }}</b>
+          <span class="revoke-sub">({{ revoke.entry.pinyin }})</span>
+        </div>
+        <div class="revoke-line">
+          {{ $tc('Asset') }}: <b>{{ revoke.entry.asset_name }}</b>
+          <span class="revoke-sub">({{ revoke.entry.asset_address }})</span>
+        </div>
+        <div class="revoke-line revoke-tip">{{ $t('RevokeConfirmTip') }}</div>
+        <div class="revoke-line revoke-tip">{{ $t('RevokeNote') }}</div>
+      </div>
+      <div slot="footer">
+        <el-button @click="revoke.visible = false">{{ $t('Cancel') }}</el-button>
+        <el-button :loading="revoke.loading" @click="doRevoke('asset')">
+          {{ $t('RevokeThisMachine') }}
+        </el-button>
+        <el-button type="danger" :loading="revoke.loading" @click="doRevoke('permission')">
+          {{ $t('RevokeWholePermission').replace('{}', revoke.entry.permission_assets || 'N') }}
+        </el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script>
-// fork 定制: 机器分配总览(仅展示工单审批分配且未过期的授权)
+// fork 定制: 机器分配总览(扁平记录, 默认隐藏已到期/已吊销, 可勾选查看)
 export default {
   name: 'MachineAllocation',
   data() {
@@ -96,7 +157,19 @@ export default {
       count: 0,
       page: 1,
       pageSize: 20,
-      search: ''
+      search: '',
+      showInactive: false,
+      revoke: {
+        visible: false,
+        loading: false,
+        entry: {}
+      }
+    }
+  },
+  computed: {
+    canRevoke() {
+      const perms = this.$store.getters.currentOrgPerms
+      return perms && perms.includes('perms.delete_assetpermission')
     }
   },
   mounted() {
@@ -106,8 +179,15 @@ export default {
     async load() {
       this.loading = true
       try {
-        const params = `?page=${this.page}&page_size=${this.pageSize}&search=${encodeURIComponent(this.search)}`
-        const data = await this.$axios.get('/api/v1/xpack/feishu-approval/allocation/' + params)
+        const params = [
+          `page=${this.page}`,
+          `page_size=${this.pageSize}`,
+          `search=${encodeURIComponent(this.search)}`
+        ]
+        if (this.showInactive) {
+          params.push('show_inactive=1')
+        }
+        const data = await this.$axios.get('/api/v1/xpack/feishu-approval/allocation/?' + params.join('&'))
         this.results = data.results || []
         this.count = data.count || 0
         this.stats = data.stats || {}
@@ -121,11 +201,21 @@ export default {
       this.page = 1
       this.load()
     },
-    minDaysLeft(row) {
-      if (!row.users || row.users.length === 0) {
-        return null
+    onToggleInactive() {
+      this.page = 1
+      this.load()
+    },
+    rowClass({ row }) {
+      return row.status === 'active' ? '' : 'row-inactive'
+    },
+    shortPermId(id) {
+      return (id || '').slice(0, 8) + '…'
+    },
+    formatTime(value) {
+      if (!value) {
+        return ''
       }
-      return Math.min(...row.users.map(u => u.days_left === null ? 9999 : u.days_left))
+      return String(value).replace('T', ' ').slice(0, 16)
     },
     expireText(days) {
       if (days === null) {
@@ -148,17 +238,35 @@ export default {
       }
       return ''
     },
-    chipClass(days) {
-      if (days === null) {
-        return ''
+    onClickRevoke(row) {
+      this.revoke.entry = row
+      this.revoke.visible = true
+    },
+    doRevoke(scope) {
+      const entry = this.revoke.entry
+      const body = { scope: scope, user_id: entry.user_id }
+      if (scope === 'asset') {
+        body.asset_id = entry.asset_id
+      } else {
+        body.permission_id = entry.permission_id
       }
-      if (days <= 7) {
-        return 'chip-danger'
-      }
-      if (days <= 30) {
-        return 'chip-warning'
-      }
-      return ''
+      this.revoke.loading = true
+      this.$axios.post(
+        '/api/v1/xpack/feishu-approval/allocation/revoke/', body, { disableFlashErrorMsg: true }
+      ).then(data => {
+        this.$message.success(this.$t('Revoked'))
+        if (data.warning) {
+          this.$message.warning(this.$t('NodeGrantWarning'))
+        }
+        this.revoke.visible = false
+        this.load()
+      }).catch(error => {
+        const resp = error.response
+        const msg = resp ? (resp.data.error || Object.values(resp.data)[0]) : this.$t('ServerError')
+        this.$message.error(typeof msg === 'string' ? msg : JSON.stringify(msg))
+      }).finally(() => {
+        this.revoke.loading = false
+      })
     }
   }
 }
@@ -199,6 +307,15 @@ export default {
       font-size: 15px;
       font-weight: 600;
     }
+
+    .table-actions {
+      display: flex;
+      align-items: center;
+
+      .inactive-switch {
+        margin-right: 16px;
+      }
+    }
   }
 
   .asset-name {
@@ -210,39 +327,24 @@ export default {
     color: var(--color-text-secondary, #86909c);
   }
 
-  .user-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    margin: 2px 6px 2px 0;
-    padding: 3px 10px;
-    background: var(--color-primary-light-9, #f2f3f5);
-    border: 1px solid var(--color-border, #e5e6eb);
-    border-radius: 14px;
+  .asset-node {
     font-size: 12px;
-    color: var(--color-text-primary, #4e5969);
+    color: var(--color-text-secondary, #86909c);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 220px;
+  }
 
-    .chip-py {
-      color: var(--color-text-secondary, #86909c);
-    }
+  .host-username,
+  .perm-id {
+    font-family: Menlo, Consolas, monospace;
+    font-size: 12px;
+    color: var(--color-text-primary, #4e5960);
+  }
 
-    .chip-serial {
-      color: var(--color-text-secondary, #86909c);
-    }
-
-    .chip-date {
-      color: var(--color-text-secondary, #86909c);
-    }
-
-    &.chip-warning {
-      border-color: #ff7d00;
-      color: #ff7d00;
-    }
-
-    &.chip-danger {
-      border-color: #f53f3f;
-      color: #f53f3f;
-    }
+  ::v-deep .row-inactive {
+    opacity: 0.55;
   }
 
   .text-warning {
@@ -258,6 +360,23 @@ export default {
   .pager {
     margin-top: 16px;
     text-align: right;
+  }
+
+  .revoke-body {
+    .revoke-line {
+      margin-bottom: 8px;
+      line-height: 1.8;
+    }
+
+    .revoke-sub {
+      font-size: 12px;
+      color: var(--color-text-secondary, #86909c);
+    }
+
+    .revoke-tip {
+      font-size: 12px;
+      color: var(--color-text-secondary, #86909c);
+    }
   }
 }
 </style>
