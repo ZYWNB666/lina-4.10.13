@@ -23,7 +23,7 @@
                   :props="treeProps"
                   node-key="id"
                   show-checkbox
-                  default-expand-all
+                  :default-expanded-keys="defaultExpandedKeys"
                   :expand-on-click-node="false"
                   :filter-node-method="filterNode"
                   @check="onCheckChange"
@@ -121,6 +121,10 @@ export default {
     }
   },
   computed: {
+    // 只展开首层(根节点), 各集群默认收起, 点击再展开
+    defaultExpandedKeys() {
+      return this.treeData.map(item => item.id)
+    },
     selectedText() {
       if (this.assetCount === 0 && this.nodeCount === 0) {
         return ''
