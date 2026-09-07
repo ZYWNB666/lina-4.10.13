@@ -47,43 +47,74 @@
         v-loading="loading" :data="results" size="medium"
         :row-class-name="rowClass"
       >
-        <el-table-column :label="$tc('Asset')" min-width="220">
+        <!-- 展开行: 机器明细 -->
+        <el-table-column type="expand" width="40">
           <template slot-scope="{ row }">
-            <div class="asset-name">{{ row.asset_name }}</div>
-            <div class="asset-addr">{{ row.asset_address }}</div>
-            <div class="asset-node" :title="row.asset_nodes">{{ row.asset_nodes }}</div>
+            <div class="expand-content">
+              <div class="expand-title">{{ $t('AssignedUsers') }}: {{ row.users.map(u => u.name + '(' + u.pinyin + ')').join('、') }}</div>
+              <el-table :data="row.assets" size="mini" class="expand-table" border>
+                <el-table-column prop="name" :label="$tc('Asset')" min-width="160">
+                  <template slot-scope="{ row: asset }">
+                    <span class="asset-name">{{ asset.name }}</span>
+                    <span class="asset-addr">{{ asset.address }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="asset_nodes" :label="$t('AssetNode')" min-width="200" show-overflow-tooltip />
+                <el-table-column :label="$t('Action')" width="110" align="center">
+                  <template slot-scope="{ row: asset }">
+                    <el-button
+                      v-if="canRevoke && row.status === 'active'"
+                      type="danger" size="mini" plain
+                      @click="onClickRevokeAsset(row, asset)"
+                    >
+                      {{ $t('RevokeThisMachine') }}
+                    </el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
           </template>
         </el-table-column>
 
-        <el-table-column :label="$t('User')" width="110">
-          <template slot-scope="{ row }">{{ row.name }}</template>
-        </el-table-column>
-
-        <el-table-column :label="$t('HostUsername')" width="130">
+        <!-- 工单号 -->
+        <el-table-column :label="$t('PermissionID')" min-width="180">
           <template slot-scope="{ row }">
-            <code class="host-username">{{ row.pinyin }}</code>
+            <div class="ticket-serial">{{ row.ticket_serial || row.permission_id.slice(0, 8) }}</div>
+            <div class="perm-name" :title="row.permission_name">{{ (row.permission_name || '').slice(0, 30) }}</div>
           </template>
         </el-table-column>
 
-        <el-table-column :label="$t('Approver2')" width="150" show-overflow-tooltip>
+        <!-- 用户 -->
+        <el-table-column :label="$t('User')" min-width="120">
+          <template slot-scope="{ row }">
+            <div v-for="u in row.users" :key="u.user_id" class="user-line">
+              <span class="user-name">{{ u.name }}</span>
+              <code class="user-pinyin">{{ u.pinyin }}</code>
+            </div>
+          </template>
+        </el-table-column>
+
+        <!-- 审批人 -->
+        <el-table-column :label="$t('Approver2')" width="140" show-overflow-tooltip>
           <template slot-scope="{ row }">{{ row.approvers || '-' }}</template>
         </el-table-column>
 
-        <el-table-column :label="$t('PermissionID')" width="130">
+        <!-- 机器数 -->
+        <el-table-column :label="$tc('Asset')" width="70" align="center">
           <template slot-scope="{ row }">
-            <el-tooltip :content="row.permission_id" placement="top">
-              <code class="perm-id">{{ shortPermId(row.permission_id) }}</code>
-            </el-tooltip>
+            <el-tag size="small" type="info">{{ row.asset_count }}</el-tag>
           </template>
         </el-table-column>
 
-        <el-table-column :label="$t('ExpireDateTime')" width="150">
+        <!-- 到期时间 -->
+        <el-table-column :label="$t('ExpireDateTime')" width="140">
           <template slot-scope="{ row }">
             {{ formatTime(row.date_expired) || $t('Permanent') }}
           </template>
         </el-table-column>
 
-        <el-table-column :label="$t('ExpireStatus')" width="120" align="center">
+        <!-- 状态 -->
+        <el-table-column :label="$t('ExpireStatus')" width="110" align="center">
           <template slot-scope="{ row }">
             <el-tag v-if="row.status === 'revoked'" type="info" size="small">{{ $t('Revoked') }}</el-tag>
             <el-tag v-else-if="row.status === 'expired'" type="info" size="small">{{ $t('AlreadyExpired') }}</el-tag>
@@ -91,6 +122,7 @@
           </template>
         </el-table-column>
 
+        <!-- 操作 -->
         <el-table-column :label="$t('Action')" width="90" align="center">
           <template slot-scope="{ row }">
             <el-button
@@ -115,30 +147,50 @@
       />
     </el-card>
 
-    <!-- 吊销确认 (fork 定制) -->
+    <!-- 吊销确认 -->
     <el-dialog
       :title="$t('RevokeAllocation')" :visible.sync="revoke.visible"
       width="480px" :close-on-click-modal="false"
     >
       <div class="revoke-body">
-        <div class="revoke-line">
-          {{ $t('User') }}: <b>{{ revoke.entry.name }}</b>
-          <span class="revoke-sub">({{ revoke.entry.pinyin }})</span>
-        </div>
-        <div class="revoke-line">
-          {{ $tc('Asset') }}: <b>{{ revoke.entry.asset_name }}</b>
-          <span class="revoke-sub">({{ revoke.entry.asset_address }})</span>
-        </div>
+        <template v-if="revoke.mode === 'asset'">
+          <div class="revoke-line">
+            {{ $t('User') }}: <b>{{ revoke.userName }}</b>
+          </div>
+          <div class="revoke-line">
+            {{ $tc('Asset') }}: <b>{{ revoke.assetName }}</b>
+            <span class="revoke-sub">({{ revoke.assetAddress }})</span>
+          </div>
+        </template>
+        <template v-else>
+          <div class="revoke-line">
+            {{ $t('PermissionID') }}: <b>{{ revoke.ticketSerial }}</b>
+          </div>
+          <div class="revoke-line">
+            {{ $t('User') }}: <b>{{ revoke.userName }}</b>
+          </div>
+          <div class="revoke-line">
+            {{ $tc('Asset') }}: <b>{{ revoke.assetCount }}</b> {{ $tc('Asset') }}
+          </div>
+        </template>
         <div class="revoke-line revoke-tip">{{ $t('RevokeConfirmTip') }}</div>
         <div class="revoke-line revoke-tip">{{ $t('RevokeNote') }}</div>
       </div>
       <div slot="footer">
         <el-button @click="revoke.visible = false">{{ $t('Cancel') }}</el-button>
-        <el-button :loading="revoke.loading" @click="doRevoke('asset')">
+        <el-button
+          v-if="revoke.mode === 'asset'"
+          type="danger" :loading="revoke.loading"
+          @click="doRevoke('asset')"
+        >
           {{ $t('RevokeThisMachine') }}
         </el-button>
-        <el-button type="danger" :loading="revoke.loading" @click="doRevoke('permission')">
-          {{ $t('RevokeWholePermission').replace('{}', revoke.entry.permission_assets || 'N') }}
+        <el-button
+          v-else
+          type="danger" :loading="revoke.loading"
+          @click="doRevoke('permission')"
+        >
+          {{ $t('RevokeWholePermission').replace('{}', revoke.assetCount || 'N') }}
         </el-button>
       </div>
     </el-dialog>
@@ -146,7 +198,7 @@
 </template>
 
 <script>
-// fork 定制: 机器分配总览(扁平记录, 默认隐藏已到期/已吊销, 可勾选查看)
+// fork 定制: 机器分配总览(按工单分组, 展开行显示机器明细)
 export default {
   name: 'MachineAllocation',
   data() {
@@ -162,7 +214,15 @@ export default {
       revoke: {
         visible: false,
         loading: false,
-        entry: {}
+        mode: 'permission',  // 'permission' | 'asset'
+        permissionId: '',
+        userId: '',
+        userName: '',
+        ticketSerial: '',
+        assetCount: 0,
+        assetId: '',
+        assetName: '',
+        assetAddress: ''
       }
     }
   },
@@ -208,47 +268,59 @@ export default {
     rowClass({ row }) {
       return row.status === 'active' ? '' : 'row-inactive'
     },
-    shortPermId(id) {
-      return (id || '').slice(0, 8) + '…'
-    },
     formatTime(value) {
-      if (!value) {
-        return ''
-      }
+      if (!value) return ''
       return String(value).replace('T', ' ').slice(0, 16)
     },
     expireText(days) {
-      if (days === null) {
-        return '-'
-      }
-      if (days < 0) {
-        return this.$t('AlreadyExpired')
-      }
+      if (days === null) return '-'
+      if (days < 0) return this.$t('AlreadyExpired')
       return `${this.$t('DaysLeft')} ${days} ${this.$tc('Day')}`
     },
     dayClass(days) {
-      if (days === null) {
-        return ''
-      }
-      if (days <= 7) {
-        return 'text-danger'
-      }
-      if (days <= 30) {
-        return 'text-warning'
-      }
+      if (days === null) return ''
+      if (days <= 7) return 'text-danger'
+      if (days <= 30) return 'text-warning'
       return ''
     },
+    // 吊销整个授权(父行按钮)
     onClickRevoke(row) {
-      this.revoke.entry = row
-      this.revoke.visible = true
+      const user = row.users[0] || {}
+      this.revoke = {
+        ...this.revoke,
+        visible: true,
+        mode: 'permission',
+        permissionId: row.permission_id,
+        userId: user.user_id || '',
+        userName: row.users.map(u => u.name).join('、'),
+        ticketSerial: row.ticket_serial,
+        assetCount: row.asset_count
+      }
+    },
+    // 仅吊销单台机器(展开行按钮)
+    onClickRevokeAsset(row, asset) {
+      const user = row.users[0] || {}
+      this.revoke = {
+        ...this.revoke,
+        visible: true,
+        mode: 'asset',
+        permissionId: row.permission_id,
+        userId: user.user_id || '',
+        userName: user.name || '',
+        assetId: asset.asset_id,
+        assetName: asset.name,
+        assetAddress: asset.address
+      }
     },
     doRevoke(scope) {
-      const entry = this.revoke.entry
-      const body = { scope: scope, user_id: entry.user_id }
+      const body = {
+        scope: scope,
+        user_id: this.revoke.userId
+      }
       if (scope === 'asset') {
-        body.asset_id = entry.asset_id
+        body.asset_id = this.revoke.assetId
       } else {
-        body.permission_id = entry.permission_id
+        body.permission_id = this.revoke.permissionId
       }
       this.revoke.loading = true
       this.$axios.post(
@@ -274,109 +346,67 @@ export default {
 
 <style lang="scss" scoped>
 .machine-allocation {
-  .stat-row {
-    margin-bottom: 16px;
-  }
+  .stat-row { margin-bottom: 16px; }
 
   .stat-card {
     text-align: center;
-
     .stat-num {
-      font-size: 26px;
-      font-weight: 700;
-      line-height: 1.4;
-
-      &.warn {
-        color: #ff7d00;
-      }
+      font-size: 26px; font-weight: 700; line-height: 1.4;
+      &.warn { color: #ff7d00; }
     }
-
     .stat-name {
-      margin-top: 2px;
-      font-size: 12px;
+      margin-top: 2px; font-size: 12px;
       color: var(--color-text-secondary, #86909c);
     }
   }
 
   .table-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-
-    .table-title {
-      font-size: 15px;
-      font-weight: 600;
-    }
-
+    display: flex; align-items: center; justify-content: space-between;
+    .table-title { font-size: 15px; font-weight: 600; }
     .table-actions {
-      display: flex;
-      align-items: center;
-
-      .inactive-switch {
-        margin-right: 16px;
-      }
+      display: flex; align-items: center;
+      .inactive-switch { margin-right: 16px; }
     }
   }
 
-  .asset-name {
-    font-weight: 600;
-  }
-
-  .asset-addr {
-    font-size: 12px;
+  .ticket-serial { font-weight: 600; font-size: 14px; }
+  .perm-name {
+    font-size: 11px;
     color: var(--color-text-secondary, #86909c);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px;
   }
 
-  .asset-node {
-    font-size: 12px;
-    color: var(--color-text-secondary, #86909c);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 220px;
+  .user-line {
+    display: flex; align-items: center; gap: 6px; line-height: 1.8;
+    .user-name { font-weight: 500; }
+    .user-pinyin {
+      font-family: Menlo, Consolas, monospace; font-size: 12px;
+      color: var(--color-text-secondary, #86909c);
+    }
   }
 
-  .host-username,
-  .perm-id {
-    font-family: Menlo, Consolas, monospace;
-    font-size: 12px;
-    color: var(--color-text-primary, #4e5960);
+  .expand-content {
+    padding: 8px 48px;
+    .expand-title {
+      margin-bottom: 8px; font-size: 13px; font-weight: 500;
+    }
+    .expand-table {
+      .asset-name { font-weight: 600; margin-right: 8px; }
+      .asset-addr { font-size: 12px; color: var(--color-text-secondary, #86909c); }
+    }
   }
 
-  ::v-deep .row-inactive {
-    opacity: 0.55;
-  }
+  ::v-deep .row-inactive { opacity: 0.55; }
 
-  .text-warning {
-    color: #ff7d00;
-    font-weight: 600;
-  }
+  .text-warning { color: #ff7d00; font-weight: 600; }
+  .text-danger { color: #f53f3f; font-weight: 600; }
 
-  .text-danger {
-    color: #f53f3f;
-    font-weight: 600;
-  }
-
-  .pager {
-    margin-top: 16px;
-    text-align: right;
-  }
+  .pager { margin-top: 16px; text-align: right; }
 
   .revoke-body {
-    .revoke-line {
-      margin-bottom: 8px;
-      line-height: 1.8;
-    }
-
-    .revoke-sub {
-      font-size: 12px;
-      color: var(--color-text-secondary, #86909c);
-    }
-
-    .revoke-tip {
-      font-size: 12px;
-      color: var(--color-text-secondary, #86909c);
-    }
+    .revoke-line { margin-bottom: 8px; line-height: 1.8; }
+    .revoke-sub { font-size: 12px; color: var(--color-text-secondary, #86909c); }
+    .revoke-tip { font-size: 12px; color: var(--color-text-secondary, #86909c); }
   }
 }
 </style>

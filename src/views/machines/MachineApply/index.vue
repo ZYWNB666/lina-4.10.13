@@ -57,10 +57,11 @@
               />
             </el-form-item>
 
-            <el-form-item :label="$t('Comment')">
+            <el-form-item :label="$t('Comment')" required>
               <el-input
                 v-model="form.comment" type="textarea" :rows="3"
                 maxlength="1024" show-word-limit
+                :placeholder="$t('CommentRequired')"
               />
             </el-form-item>
 
@@ -195,6 +196,9 @@ export default {
       const nodeIds = [...nodeIdSet]
       if (assetIds.length === 0 && nodeIds.length === 0) {
         return this.$message.warning(this.$t('SelectMachines'))
+      }
+      if (!this.form.comment || !this.form.comment.trim()) {
+        return this.$message.warning(this.$t('CommentRequired'))
       }
       const body = { asset_ids: assetIds, node_ids: nodeIds, comment: this.form.comment }
       if (this.form.duration === 'custom') {
