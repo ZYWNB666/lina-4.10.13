@@ -166,15 +166,33 @@ export default {
     },
     onCheckChange() {
       this.$nextTick(() => {
-        const checked = this.$refs.machineTree.getCheckedKeys()
-        this.assetCount = checked.filter(k => k.startsWith('asset-')).length
-        this.nodeCount = checked.filter(k => k.startsWith('node-')).length
+        const nodes = this.$refs.machineTree.getCheckedNodes()
+        const assetIds = new Set()
+        let nodeCount = 0
+        nodes.forEach(n => {
+          if (n.type === 'asset' && n.asset_id) {
+            assetIds.add(n.asset_id)
+          } else if (n.type === 'node' && n.node_id) {
+            nodeCount++
+          }
+        })
+        this.assetCount = assetIds.size
+        this.nodeCount = nodeCount
       })
     },
     onSubmit() {
-      const checked = this.$refs.machineTree ? this.$refs.machineTree.getCheckedKeys() : []
-      const assetIds = checked.filter(k => k.startsWith('asset-')).map(k => k.slice(6))
-      const nodeIds = checked.filter(k => k.startsWith('node-')).map(k => k.slice(5))
+      const treeNodes = this.$refs.machineTree ? this.$refs.machineTree.getCheckedNodes() : []
+      const assetIdSet = new Set()
+      const nodeIdSet = new Set()
+      treeNodes.forEach(n => {
+        if (n.type === 'asset' && n.asset_id) {
+          assetIdSet.add(n.asset_id)
+        } else if (n.type === 'node' && n.node_id) {
+          nodeIdSet.add(n.node_id)
+        }
+      })
+      const assetIds = [...assetIdSet]
+      const nodeIds = [...nodeIdSet]
       if (assetIds.length === 0 && nodeIds.length === 0) {
         return this.$message.warning(this.$t('SelectMachines'))
       }
