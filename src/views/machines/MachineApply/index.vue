@@ -10,26 +10,35 @@
 
           <el-form ref="applyForm" :model="form" label-width="90px" @submit.native.prevent>
             <el-form-item :label="$t('SelectMachines')" required>
-              <el-select
-                v-model="form.assets"
-                v-loading="assetsLoading"
-                multiple filterable remote reserve-keyword
-                :remote-method="searchAssets"
-                :loading="assetsLoading"
-                :placeholder="$t('Search')"
-                style="width: 100%"
-                @visible-change="onSelectVisible"
-              >
-                <el-option
-                  v-for="a in assetOptions"
-                  :key="a.id"
-                  :label="`${a.name} (${a.address})`"
-                  :value="a.id"
+              <el-input
+                v-model="treeFilter" size="small" clearable
+                :placeholder="$t('Search')" prefix-icon="el-icon-search"
+                style="margin-bottom: 8px"
+              />
+              <div v-loading="treeLoading" class="machine-tree">
+                <el-tree
+                  v-if="treeData.length"
+                  ref="machineTree"
+                  :data="treeData"
+                  :props="treeProps"
+                  node-key="id"
+                  show-checkbox
+                  default-expand-all
+                  :expand-on-click-node="false"
+                  :filter-node-method="filterNode"
+                  @check="onCheckChange"
                 >
-                  <span style="float: left">{{ a.name }}</span>
-                  <span class="asset-option-addr">{{ a.address }}</span>
-                </el-option>
-              </el-select>
+                  <span slot-scope="{ data }" class="tree-node">
+                    <i :class="data.type === 'node' ? 'fa fa-folder' : 'fa fa-desktop'" class="tree-icon" />
+                    <span class="tree-label">{{ data.label }}</span>
+                    <span v-if="data.type === 'asset'" class="tree-addr">{{ data.address }}</span>
+                  </span>
+                </el-tree>
+                <div v-else class="tree-empty">{{ $t('NoMachineFound') }}</div>
+              </div>
+              <div v-if="selectedText" class="selected-summary">
+                <i class="el-icon-info" /> {{ selectedText }}
+              </div>
             </el-form-item>
 
             <el-form-item :label="$t('UseDuration')" required>
@@ -66,13 +75,15 @@
     </el-row>
 
     <el-dialog
-      :title="$t('ApplySubmitted')" :visible.sync="resultVisible"
+      :title="result.auto_approved ? $t('AutoApproved') : $t('ApplySubmitted')" :visible.sync="resultVisible"
       width="420px" :close-on-click-modal="false" :show-close="false"
     >
       <div class="result-body">
-        <i class="fa fa-check-circle result-icon" />
+        <i class="fa fa-check-circle result-icon" :class="{ 'icon-auto': result.auto_approved }" />
         <div class="result-serial">{{ result.serial_num }}</div>
-        <div class="result-tip">{{ $t('ApplySubmittedTip') }}</div>
+        <div class="result-tip">
+          {{ result.auto_approved ? $t('AutoApprovedTip') : $t('ApplySubmittedTip') }}
+        </div>
       </div>
       <div slot="footer">
         <el-button @click="onViewTickets">{{ $t('MyTickets') }}</el-button>
@@ -83,20 +94,25 @@
 </template>
 
 <script>
-// fork 定制: 机器访问申请(极简表单, 提交到 feishu_approval 插件 API,
-// 服务端强制 @USER 账号/动作, 审批通过后自动开通)
+// fork 定制: 机器访问申请(树状勾选: 可单选机器或整个目录, 目录授权含未来新增机器)
 export default {
   name: 'MachineApply',
   data() {
     return {
       form: {
-        assets: [],
         duration: '30',
         customDate: '',
         comment: ''
       },
-      assetOptions: [],
-      assetsLoading: false,
+      treeData: [],
+      treeLoading: false,
+      treeFilter: '',
+      treeProps: {
+        children: 'children',
+        label: 'label'
+      },
+      assetCount: 0,
+      nodeCount: 0,
       submitting: false,
       resultVisible: false,
       result: {
@@ -104,32 +120,61 @@ export default {
       }
     }
   },
+  computed: {
+    selectedText() {
+      if (this.assetCount === 0 && this.nodeCount === 0) {
+        return ''
+      }
+      return this.$t('SelectedSummary')
+        .replace('{assets}', this.assetCount)
+        .replace('{nodes}', this.nodeCount)
+    }
+  },
+  watch: {
+    treeFilter(value) {
+      this.$refs.machineTree.filter(value)
+    }
+  },
   mounted() {
-    this.searchAssets('')
+    this.loadTree()
   },
   methods: {
-    async searchAssets(query) {
-      this.assetsLoading = true
+    async loadTree() {
+      this.treeLoading = true
       try {
-        const url = '/api/v1/xpack/feishu-approval/apply/assets/?search=' + encodeURIComponent(query || '')
-        const data = await this.$axios.get(url, { disableFlashErrorMsg: true })
-        this.assetOptions = data.results || []
+        const data = await this.$axios.get('/api/v1/xpack/feishu-approval/apply/assets/', { disableFlashErrorMsg: true })
+        this.treeData = data.tree || []
       } catch (e) {
-        // 静默, 下拉打开时会重试
+        // 静默
       } finally {
-        this.assetsLoading = false
+        this.treeLoading = false
       }
     },
-    onSelectVisible(visible) {
-      if (visible && this.assetOptions.length === 0) {
-        this.searchAssets('')
+    filterNode(value, data) {
+      if (!value) {
+        return true
       }
+      const v = value.toLowerCase()
+      return (
+        data.label.toLowerCase().includes(v) ||
+        (data.address || '').toLowerCase().includes(v)
+      )
+    },
+    onCheckChange() {
+      this.$nextTick(() => {
+        const checked = this.$refs.machineTree.getCheckedKeys()
+        this.assetCount = checked.filter(k => k.startsWith('asset-')).length
+        this.nodeCount = checked.filter(k => k.startsWith('node-')).length
+      })
     },
     onSubmit() {
-      if (this.form.assets.length === 0) {
+      const checked = this.$refs.machineTree ? this.$refs.machineTree.getCheckedKeys() : []
+      const assetIds = checked.filter(k => k.startsWith('asset-')).map(k => k.slice(6))
+      const nodeIds = checked.filter(k => k.startsWith('node-')).map(k => k.slice(5))
+      if (assetIds.length === 0 && nodeIds.length === 0) {
         return this.$message.warning(this.$t('SelectMachines'))
       }
-      const body = { asset_ids: this.form.assets, comment: this.form.comment }
+      const body = { asset_ids: assetIds, node_ids: nodeIds, comment: this.form.comment }
       if (this.form.duration === 'custom') {
         if (!this.form.customDate) {
           return this.$message.warning(this.$t('CustomExpired'))
@@ -153,10 +198,14 @@ export default {
       })
     },
     onReset() {
-      this.form.assets = []
       this.form.duration = '30'
       this.form.customDate = ''
       this.form.comment = ''
+      if (this.$refs.machineTree) {
+        this.$refs.machineTree.setCheckedKeys([])
+      }
+      this.assetCount = 0
+      this.nodeCount = 0
       this.resultVisible = false
     },
     onViewTickets() {
@@ -174,7 +223,7 @@ export default {
 
     .card-icon {
       margin-right: 8px;
-      color: var(--color-primary);
+      color: var(--color-primary, #165dff);
     }
   }
 
@@ -185,10 +234,45 @@ export default {
     font-weight: 400;
   }
 
-  .asset-option-addr {
-    float: right;
+  .machine-tree {
+    border: 1px solid var(--color-border, #e5e6eb);
+    border-radius: 4px;
+    max-height: 320px;
+    overflow: auto;
+    padding: 4px 0;
+
+    .tree-empty {
+      padding: 32px;
+      text-align: center;
+      color: var(--color-text-secondary, #86909c);
+      font-size: 13px;
+    }
+  }
+
+  .tree-node {
+    display: flex;
+    align-items: center;
+    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    .tree-icon {
+      margin-right: 6px;
+      color: var(--color-text-secondary, #86909c);
+    }
+
+    .tree-addr {
+      margin-left: 8px;
+      font-size: 12px;
+      color: var(--color-text-secondary, #86909c);
+    }
+  }
+
+  .selected-summary {
+    margin-top: 8px;
     font-size: 12px;
-    color: var(--color-text-secondary, #86909c);
+    color: var(--color-primary, #165dff);
+    line-height: 1.6;
   }
 
   .result-body {
@@ -198,6 +282,10 @@ export default {
     .result-icon {
       font-size: 48px;
       color: var(--color-success, #00b42a);
+
+      &.icon-auto {
+        color: var(--color-primary, #165dff);
+      }
     }
 
     .result-serial {
