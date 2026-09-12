@@ -130,6 +130,9 @@ export default {
         : ''
     },
     chatUrl() {
+      if (this.publicSettings.CHAT_AI_TYPE === 'magik') {
+        return require('@/assets/img/robot-assistant.png')
+      }
       return this.publicSettings.CHAT_AI_TYPE === 'gpt'
         ? require('@/assets/img/chat.png')
         : require('@/assets/img/deepSeek.png')

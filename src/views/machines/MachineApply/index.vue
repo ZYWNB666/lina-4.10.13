@@ -43,6 +43,8 @@
 
             <el-form-item :label="$t('UseDuration')" required>
               <el-radio-group v-model="form.duration">
+                <el-radio-button label="1">1 {{ $tc('Day') }}</el-radio-button>
+                <el-radio-button label="3">3 {{ $tc('Day') }}</el-radio-button>
                 <el-radio-button label="7">7 {{ $tc('Day') }}</el-radio-button>
                 <el-radio-button label="30">30 {{ $tc('Day') }}</el-radio-button>
                 <el-radio-button label="90">90 {{ $tc('Day') }}</el-radio-button>

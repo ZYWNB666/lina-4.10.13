@@ -46,6 +46,10 @@ export default {
         'CHAT_AI_METHOD',
         'CHAT_AI_EMBED_URL',
         'CHAT_AI_TYPE',
+        'MAGIK_BASE_URL',
+        'MAGIK_API_KEY',
+        'MAGIK_PROXY',
+        'MAGIK_MODEL',
         'DEEPSEEK_BASE_URL',
         'DEEPSEEK_API_KEY',
         'DEEPSEEK_PROXY',
@@ -59,6 +63,32 @@ export default {
         CHAT_AI_TYPE: {
           hidden: (formValue) => {
             return formValue.CHAT_AI_METHOD !== 'api'
+          }
+        },
+        MAGIK_BASE_URL: {
+          el: {
+            autocomplete: 'new-password'
+          },
+          hidden: (formValue) => {
+            return formValue.CHAT_AI_METHOD !== 'api' || formValue.CHAT_AI_TYPE !== 'magik'
+          }
+        },
+        MAGIK_API_KEY: {
+          el: {
+            autocomplete: 'new-password'
+          },
+          hidden: (formValue) => {
+            return formValue.CHAT_AI_METHOD !== 'api' || formValue.CHAT_AI_TYPE !== 'magik'
+          }
+        },
+        MAGIK_PROXY: {
+          hidden: (formValue) => {
+            return formValue.CHAT_AI_METHOD !== 'api' || formValue.CHAT_AI_TYPE !== 'magik'
+          }
+        },
+        MAGIK_MODEL: {
+          hidden: (formValue) => {
+            return formValue.CHAT_AI_METHOD !== 'api' || formValue.CHAT_AI_TYPE !== 'magik'
           }
         },
         GPT_BASE_URL: {
