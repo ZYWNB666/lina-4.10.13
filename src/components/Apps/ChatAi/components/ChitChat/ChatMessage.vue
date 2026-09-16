@@ -9,17 +9,19 @@
       </div>
       <div class="content">
         <div class="operational">
-          <div v-if="!item.message.is_reasoning" class="date">
+          <div v-if="hasReasoning" class="thinking-time" @click="toggleReasoning">
+            <i class="fa" :class="thinkingIcon" />
+            <span>{{ isThinking ? $t('Thinking') : $i18n.t('DeeplyThoughtAbout') }}</span>
+          </div>
+          <div v-else class="date">
             {{
               $moment(item.message.create_time).format("YYYY-MM-DD HH:mm:ss")
             }}
           </div>
-
-          <div v-else class="thinking-time">{{ $i18n.t('DeeplyThoughtAbout') }}</div>
         </div>
-        <div :class="item.reasoning ? 'reasoning' : 'message'">
+        <div :class="hasReasoning ? 'reasoning' : 'message'">
           <div class="message-content">
-            <div v-if="!item.reasoning">
+            <div v-if="!hasReasoning">
               <span v-if="isSystemError" class="error">
                 {{ item.message.content }}
               </span>
@@ -29,7 +31,7 @@
             </div>
 
             <div v-else class="thinking-wrapper">
-              <div class="thinking-content">
+              <div v-show="isReasoningExpanded" class="thinking-content">
                 <!-- eslint-disable-next-line -->
                 <div class="divider"></div>
                 <p>
@@ -101,6 +103,7 @@ export default {
   data() {
     return {
       userUrl: '/api/v1/settings/logo/',
+      showReasoning: false,
       dropdownOptions: [
         {
           action: 'copy',
@@ -116,6 +119,22 @@ export default {
     ...mapGetters([
       'publicSettings'
     ]),
+    hasReasoning() {
+      return !!(this.item.reasoning && this.item.reasoning.content)
+    },
+    isThinking() {
+      return this.isLoading && this.hasReasoning &&
+        !(this.item.result && this.item.result.content)
+    },
+    isReasoningExpanded() {
+      return this.isThinking || this.showReasoning
+    },
+    thinkingIcon() {
+      if (this.isThinking) {
+        return 'fa-spinner fa-spin'
+      }
+      return this.isReasoningExpanded ? 'fa-chevron-up' : 'fa-chevron-down'
+    },
     isUserRole() {
       return this.item.message?.role === 'user'
     },
@@ -139,6 +158,9 @@ export default {
     }
   },
   methods: {
+    toggleReasoning() {
+      this.showReasoning = !this.isReasoningExpanded
+    },
     onRefresh() {
       reconnect()
       removeLoadingMessageInChat()
@@ -197,12 +219,23 @@ export default {
         }
 
         .thinking-time {
-          width: 6rem;
+          min-width: 6rem;
           display: flex;
+          align-items: center;
           justify-content: center;
+          gap: 4px;
           padding: 5px 10px;
           border-radius: 0.5rem;
           background-color: #f5f5f5;
+          cursor: pointer;
+
+          i {
+            font-size: 12px;
+          }
+
+          &:hover {
+            background-color: #ececec;
+          }
         }
 
         .copy {
