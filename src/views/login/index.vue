@@ -9,7 +9,7 @@
       label-position="left"
     >
       <div class="title-container">
-        <h3 class="title">Login Form</h3>
+        <h3 class="title">🚀 欢迎使用 JMP 管理系统</h3>
       </div>
 
       <el-form-item prop="username">
@@ -19,7 +19,7 @@
         <el-input
           ref="username"
           v-model="loginForm.username"
-          placeholder="Username"
+          placeholder="请输入用户名"
           name="username"
           type="text"
           tabindex="1"
@@ -36,7 +36,7 @@
           ref="password"
           v-model="loginForm.password"
           :type="passwordType"
-          placeholder="Password"
+          placeholder="请输入密码"
           name="password"
           tabindex="2"
           auto-complete="on"
@@ -52,12 +52,12 @@
         type="primary"
         style="width: 100%; margin-bottom: 30px"
         @click.prevent="handleLogin"
-        >Login</el-button
+        >立即登录 →</el-button
       >
 
       <div class="tips">
-        <span style="margin-right: 20px">username: admin</span>
-        <span> password: any</span>
+        <span style="margin-right: 20px">✨ 默认账号: admin</span>
+        <span> 🔑 密码: any</span>
       </div>
     </el-form>
   </div>
