@@ -37,7 +37,7 @@
 import ChatInput from './ChatInput.vue'
 import ChatMessage from './ChatMessage.vue'
 import { mapState } from 'vuex'
-import { closeWebSocket, createWebSocket, onSend, ws } from '@/utils/request'
+import { closeWebSocket, createWebSocket, ensureOpen, onSend, ws } from '@/utils/request'
 import { getInputFocus, useChat } from '../../useChat.js'
 
 const {
@@ -186,33 +186,54 @@ export default {
       this.showIntroduction = false
       this.socket = ws || {}
       if (ws?.readyState === 1) {
-        const chat = {
-          message: {
-            content: value,
-            role: 'user',
-            create_time: new Date()
+        this._doSend(value)
+      } else {
+        // 连接已断开: 主动重建并重试, 而非直接报错
+        ensureOpen()
+        addTemporaryLoadingToChat()
+        let tries = 0
+        const maxTries = 10
+        const trySend = () => {
+          this.socket = ws || {}
+          if (ws?.readyState === 1) {
+            removeLoadingMessageInChat()
+            this._doSend(value)
+          } else if (tries < maxTries) {
+            tries++
+            setTimeout(trySend, 300)
+          } else {
+            removeLoadingMessageInChat()
+            const chat = {
+              message: {
+                content: this.$t('ConnectionDropped'),
+                role: 'assistant',
+                create_time: new Date()
+              },
+              type: 'error'
+            }
+            addMessageToActiveChat(chat)
+            setLoading(true)
           }
         }
-        const message = {
-          data: value,
-          prompt: this.prompt,
-          id: this.conversationId || ''
-        }
-        addChatMessageById(chat)
-        onSend(message)
-        addTemporaryLoadingToChat()
-      } else {
-        const chat = {
-          message: {
-            content: this.$t('ConnectionDropped'),
-            role: 'assistant',
-            create_time: new Date()
-          },
-          type: 'error'
-        }
-        addChatMessageById(chat)
-        setLoading(true)
+        setTimeout(trySend, 300)
       }
+    },
+    _doSend(value) {
+      const chat = {
+        message: {
+          content: value,
+          role: 'user',
+          create_time: new Date()
+        }
+      }
+      const message = {
+        data: value,
+        prompt: this.prompt,
+        id: this.conversationId || ''
+      }
+      addChatMessageById(chat)
+      onSend(message)
+      addTemporaryLoadingToChat()
     },
     onSelectPromptHandle(value) {
       this.prompt = value

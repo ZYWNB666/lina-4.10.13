@@ -153,7 +153,8 @@ export default {
       this.$refs.drawer.handleHeaderMoveUp(event)
     },
     initWebSocket() {
-      if (!ws) {
+      // ws 不存在或已断开(CLOSED/CLOSING)都需要重建
+      if (!ws || ws.readyState === undefined || ws.readyState >= 2) {
         this.$refs.component?.init()
       }
     },

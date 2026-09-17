@@ -215,6 +215,8 @@ let globalCallback = null
 let heartbeatInterval = null
 const timeout = 20 * 1000
 let lockReconnect = false
+// 主动关闭标志: closeWebSocket() 置 true, 避免 onClose 里触发重连
+let manualClosed = false
 
 /**
  * @param {String} url
@@ -223,6 +225,7 @@ let lockReconnect = false
 export function createWebSocket(url = globalUrl, callback = globalCallback) {
   globalUrl = url
   globalCallback = callback
+  manualClosed = false
 
   ws = new WebSocket(url)
   ws.onopen = () => {
@@ -296,9 +299,31 @@ export function onError() {
   reconnect()
 }
 
-export function onClose() {}
+export function onClose() {
+  // 主动关闭不重连; 异常断开(如 nginx 重载/网络抖动)自动重连
+  if (manualClosed) {
+    return
+  }
+  if (heartbeatInterval) clearInterval(heartbeatInterval)
+  reconnect()
+}
+
+// 发消息前确保连接可用: 不可用则立即重建, 返回是否已 OPEN
+export function ensureOpen() {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    return true
+  }
+  // 异常断开后 ws 可能停在 CLOSED, 主动重建(绕过 10s 防抖)
+  if (globalUrl) {
+    lockReconnect = false
+    timeoutNum && clearTimeout(timeoutNum)
+    createWebSocket()
+  }
+  return false
+}
 
 export function closeWebSocket() {
+  manualClosed = true
   ws?.close()
   ws = null
   lockReconnect = false
