@@ -15,10 +15,20 @@ export default {
     type: 'view',
     showNavSwitcher: false,
     resource: 'ticket',
-    licenseRequired: true,
     permissions: ['tickets.view_ticket']
   },
   children: [
+    {
+      path: '/tickets/machine-apply',
+      name: 'MachineApply',
+      component: () => import('@/views/machines/MachineApply'),
+      meta: {
+        title: i18n.t('MachineApply'),
+        icon: 'computer',
+        showOrganization: false,
+        permissions: []
+      }
+    },
     {
       path: '/tickets/my-tickets',
       name: 'MyTicketList',

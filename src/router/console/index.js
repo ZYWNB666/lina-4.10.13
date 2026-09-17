@@ -27,6 +27,16 @@ export default {
   },
   children: [
     {
+      path: '/console/machine-allocation',
+      name: 'MachineAllocation',
+      component: () => import('@/views/machines/MachineAllocation'),
+      meta: {
+        title: i18n.t('MachineAllocation'),
+        icon: 'tree',
+        permissions: ['perms.view_assetpermission']
+      }
+    },
+    {
       path: '/console/dashboard',
       component: () => import('@/views/dashboard/Console/index.vue'),
       name: 'AdminDashboard',
