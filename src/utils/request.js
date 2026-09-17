@@ -258,7 +258,13 @@ export function onMessage(res) {
     if (data.type === 'PONG' || data.type === 'PING') {
       return
     }
-    data.message = JSON.parse(data.data)
+    // 后端 error/close 消息的 data 是纯文本(非 JSON), 解析失败时兜底为消息对象,
+    // 否则整条消息会被丢弃, 前端永远看不到后端错误(如 chat timeout)
+    try {
+      data.message = JSON.parse(data.data)
+    } catch (e) {
+      data.message = { content: data.data }
+    }
     if (globalCallback) {
       globalCallback(data)
     }
