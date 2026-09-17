@@ -12,3 +12,7 @@ RUN --mount=type=cache,target=/root/.yarn/berry/cache,id=lina-yarn-cache \
     && sed -i "s@version-dev@${VERSION}@g" src/layout/components/NavHeader/About.vue \
     && yarn build:prod \
     && cp -r /data/lina /opt/lina
+
+# Keep the official v5 web proxy and Luna assets, replacing only Lina.
+FROM jumpserver/web:v5.0.0-ce
+COPY --from=stage-build /opt/lina/ /opt/lina/
