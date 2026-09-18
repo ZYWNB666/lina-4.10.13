@@ -269,6 +269,11 @@ export default {
   }
 
   .machine-tree {
+    // Element Plus form content is flex; keep the tree on a full-width row.
+    flex: 0 0 100%;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
     border: 1px solid var(--color-border, #e5e6eb);
     border-radius: 4px;
     max-height: 320px;
@@ -303,6 +308,9 @@ export default {
   }
 
   .selected-summary {
+    flex: 0 0 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
     margin-top: 8px;
     font-size: 12px;
     color: var(--color-primary, #165dff);
