@@ -27,9 +27,7 @@ const mutations = {
     state.publicSettings = settings
     state.themeColors = settings?.INTERFACE?.theme_info?.colors || {}
 
-    if (settings['XPACK_ENABLED']) {
-      state.hasValidLicense = settings['XPACK_LICENSE_IS_VALID']
-    }
+    state.hasValidLicense = settings['XPACK_LICENSE_IS_VALID'] === true
   },
   SET_SECURITY_WATERMARK_ENABLED: (state, value) => {
     state.publicSettings['SECURITY_WATERMARK_ENABLED'] = value

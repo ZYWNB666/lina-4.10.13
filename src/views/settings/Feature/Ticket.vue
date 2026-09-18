@@ -9,7 +9,7 @@ import { GenericCreateUpdateForm } from '@/layout/components'
 import { IBox } from '@/components'
 
 export default {
-  name: 'Announcement',
+  name: 'Ticket',
   components: {
     GenericCreateUpdateForm,
     IBox
@@ -43,7 +43,8 @@ export default {
   },
   methods: {
     submitSuccess(res) {
-      this.$emit('input', !!res[this.enableField])
+      this.$store.dispatch('settings/getPublicSettings')
+      this.$emit('input', !!res.TICKETS_ENABLED)
       this.visible = false
     }
   }

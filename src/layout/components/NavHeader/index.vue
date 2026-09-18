@@ -89,11 +89,7 @@ export default {
   computed: {
     ...mapGetters(['sidebar', 'publicSettings', 'currentOrgRoles', 'currentViewRoute', 'isMobile']),
     ticketsEnabled() {
-      return (
-        this.publicSettings['TICKETS_ENABLED'] &&
-        this.$hasLicense() &&
-        this.$hasPerm('tickets.view_ticket')
-      )
+      return this.publicSettings['TICKETS_ENABLED'] && this.$hasPerm('tickets.view_ticket')
     },
     showLogo() {
       return this.$store.state.settings.sidebarLogo

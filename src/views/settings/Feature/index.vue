@@ -30,7 +30,7 @@ export default {
         {
           title: this.$t('Ticket'),
           name: 'Ticket',
-          hidden: !this.$store.getters.hasValidLicense || !this.$hasPerm('settings.change_ticket')
+          hidden: !this.$hasPerm('settings.change_ticket')
         },
         {
           title: this.$t('JobCenter'),
