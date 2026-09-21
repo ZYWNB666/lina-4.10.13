@@ -62,6 +62,17 @@
                   </template>
                 </el-table-column>
                 <el-table-column prop="asset_nodes" :label="$t('AssetNode')" min-width="200" show-overflow-tooltip />
+                <el-table-column :label="$t('K8sSchedule')" width="96" align="center">
+                  <template v-slot:default="{ row: asset }">
+                    <el-tag
+                      v-if="asset.k8s_lock" size="mini"
+                      :type="lockTagType(asset.k8s_lock)"
+                    >
+                      {{ lockLabel(asset.k8s_lock) }}
+                    </el-tag>
+                    <span v-else class="lock-none">-</span>
+                  </template>
+                </el-table-column>
                 <el-table-column :label="$t('Action')" width="110" align="center">
                   <template v-slot:default="{ row: asset }">
                     <el-button
@@ -275,6 +286,27 @@ export default {
     formatTime(value) {
       if (!value) return ''
       return String(value).replace('T', ' ').slice(0, 16)
+    },
+    // K8s 调度锁状态(kite_lock): locked/released/pending/failed/not_found
+    lockTagType(state) {
+      const map = {
+        locked: 'warning',
+        released: 'success',
+        pending: 'info',
+        not_found: 'info',
+        failed: 'danger'
+      }
+      return map[state] || 'info'
+    },
+    lockLabel(state) {
+      const map = {
+        locked: 'K8sLockLocked',
+        released: 'K8sLockReleased',
+        pending: 'K8sLockPending',
+        not_found: 'K8sLockNotFound',
+        failed: 'K8sLockFailed'
+      }
+      return this.$t(map[state] || 'K8sLockNone')
     },
     expireText(days) {
       if (days === null) return '-'
