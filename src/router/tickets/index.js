@@ -65,7 +65,8 @@ export default {
         {
           path: 'request-host-perm/create',
           name: 'RequestAssetPermTicketCreateUpdate',
-          component: () => import('@/views/tickets/RequestAssetPerm/CreateUpdate'),
+          // fork 定制: 旧资产授权工单表单下线, 收藏/历史直达的用户引导到机器申请
+          redirect: '/tickets/machine-apply',
           meta: {
             title: i18n.t('OpenTicket'),
             permissions: ['tickets.view_ticket'],

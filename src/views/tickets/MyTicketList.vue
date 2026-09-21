@@ -14,14 +14,19 @@ export default {
   data() {
     return {
       extraTicketAction: {
-        moreCreates: {
-          dropdown: [
-            {
-              name: 'RequestAssetPerm',
-              title: this.$t('RequestAssetPerm')
+        // fork 定制: 旧「申请资产授权」工单表单已下线, 入口直达机器申请
+        moreCreates: { has: false },
+        extraActions: [
+          {
+            name: 'MachineApply',
+            title: this.$t('MachineApply'),
+            icon: 'plus',
+            type: 'primary',
+            callback: () => {
+              this.$router.push({ name: 'MachineApply' })
             }
-          ]
-        }
+          }
+        ]
       }
     }
   },
