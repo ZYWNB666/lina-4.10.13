@@ -24,25 +24,17 @@ COPY nginx-luna-bfcache.conf /etc/nginx/conf.d/00-luna-bfcache.conf
 RUN sed -i -E 's/(proxy_(read|send)_timeout )600;/\11800;/' \
     /etc/nginx/includes/koko.conf /etc/nginx/includes/chen.conf
 
-# Chrome/Edge 149+ 会在 Luna 页面进入 BFCache 时主动关闭 WebSocket,
-# 前端因收不到 Koko 结束原因而报 1006。仅对 HTML 导航响应禁用
-# BFCache; hashed JS/CSS/图片继续使用浏览器缓存。
+# Avoid stale HTML after deployment. This header does not prevent background
+# tab freezing; terminal connections are protected by the Web Lock script below.
 RUN set -eux; \
     sed -i '/location \/luna\/ {/a\        add_header Cache-Control $luna_cache_control always;' \
         /etc/nginx/includes/common.conf; \
     grep -Fq 'add_header Cache-Control $luna_cache_control always;' \
         /etc/nginx/includes/common.conf
 
-# New Chrome versions ignore unload handlers by default. Explicitly allow the
-# handler for Luna and register one before the terminal app boots so Chrome
-# cannot restore a page whose Koko WebSocket has already been closed.
-RUN set -eux; \
-    sed -i '/location \/luna\/ {/a\        add_header Permissions-Policy "unload=(self)" always;' \
-        /etc/nginx/includes/common.conf; \
-    grep -Fq 'add_header Permissions-Policy "unload=(self)" always;' \
-        /etc/nginx/includes/common.conf; \
-    grep -q '</head>' /opt/luna/index.html; \
-    snippet='<script>window.addEventListener("unload",function(){});window.addEventListener("pageshow",function(e){if(e.persisted){location.reload();}});</script>'; \
-    sed -i "s#</head>#${snippet}</head>#" /opt/luna/index.html; \
-    grep -q 'addEventListener("unload"' /opt/luna/index.html; \
-    grep -q 'pageshow' /opt/luna/index.html
+# Luna is supplied by the official web image, so install the connection guard
+# into its HTML entry points. Content hashing prevents stale script caching.
+COPY utils/luna-terminal-session-guard.js /tmp/luna-terminal-session-guard.js
+COPY utils/install-luna-terminal-guard.sh /tmp/install-luna-terminal-guard.sh
+RUN sh /tmp/install-luna-terminal-guard.sh \
+    && rm /tmp/luna-terminal-session-guard.js /tmp/install-luna-terminal-guard.sh
