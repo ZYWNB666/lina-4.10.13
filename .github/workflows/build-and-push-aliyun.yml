@@ -7,6 +7,7 @@ on:
       - master
       - dev
       - v5
+      - v5.1
   workflow_dispatch:  # 支持手动触发
 
 jobs:

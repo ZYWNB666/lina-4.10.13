@@ -14,7 +14,7 @@ RUN --mount=type=cache,target=/root/.yarn/berry/cache,id=lina-yarn-cache \
     && cp -r /data/lina /opt/lina
 
 # Keep the official v5 web proxy and Luna assets, replacing only Lina.
-FROM jumpserver/web:v5.0.0-ce
+FROM jumpserver/web:v5.1.0-ce
 COPY --from=stage-build /opt/lina/ /opt/lina/
 COPY nginx-luna-bfcache.conf /etc/nginx/conf.d/00-luna-bfcache.conf
 
