@@ -13,9 +13,29 @@ RUN --mount=type=cache,target=/root/.yarn/berry/cache,id=lina-yarn-cache \
     && yarn build:prod \
     && cp -r /data/lina /opt/lina
 
-# Keep the official v5 web proxy and Luna assets, replacing only Lina.
+# Luna v5.1.0: rebuild its source so selected-text Ctrl+C never sends an interrupt.
+FROM node:24-bookworm-slim AS stage-luna
+ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1 \
+    PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 \
+    HUSKY=0
+RUN apt-get update && apt-get install -y --no-install-recommends patch \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install --global pnpm@11.4.0
+ADD --checksum=sha256:781fe079a2e97f30b2f5291524c6dbeda3b8ba721e38574aeb2226f5dfc49f9d \
+    https://codeload.github.com/jumpserver/luna/tar.gz/6f0ffe532d542cea3aa3d698255b69786e32a42e /tmp/luna.tar.gz
+WORKDIR /data
+RUN tar -xzf /tmp/luna.tar.gz --strip-components=1 -C /data && rm /tmp/luna.tar.gz
+COPY utils/luna-selection-copy.patch /tmp/luna-selection-copy.patch
+RUN patch --batch --fuzz=0 -p1 < /tmp/luna-selection-copy.patch
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store,id=luna-pnpm-cache \
+    pnpm --filter jumpserver-web... install --frozen-lockfile --config.node-linker=isolated --child-concurrency=2 \
+    && pnpm --config.node-linker=isolated --filter jumpserver-web web:generate
+
+# Keep the official v5 web proxy, replacing Lina and patched Luna assets.
 FROM jumpserver/web:v5.1.0-ce
 COPY --from=stage-build /opt/lina/ /opt/lina/
+RUN rm -rf /opt/luna && mkdir /opt/luna
+COPY --from=stage-luna /data/.output/public/ /opt/luna/
 COPY nginx-luna-bfcache.conf /etc/nginx/conf.d/00-luna-bfcache.conf
 
 # 网页终端 WebSocket(koko)与数据库终端(chen)的反代读/写超时 600s→1800s。
@@ -32,8 +52,8 @@ RUN set -eux; \
     grep -Fq 'add_header Cache-Control $luna_cache_control always;' \
         /etc/nginx/includes/common.conf
 
-# Luna is supplied by the official web image, so install the connection guard
-# into its HTML entry points. Content hashing prevents stale script caching.
+# Install the connection guard into Luna's HTML entry points.
+# Content hashing prevents stale script caching.
 COPY utils/luna-terminal-session-guard.js /tmp/luna-terminal-session-guard.js
 COPY utils/install-luna-terminal-guard.sh /tmp/install-luna-terminal-guard.sh
 RUN sh /tmp/install-luna-terminal-guard.sh \

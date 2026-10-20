@@ -274,6 +274,7 @@
         />
       </template>
       <template #node-actions="{ data, expanded }">
+        <slot name="node-actions" :data="data" :expanded="expanded" />
         <span
           v-if="
             treeSetting.showNodeActions !== false &&

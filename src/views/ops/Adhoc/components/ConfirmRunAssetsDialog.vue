@@ -3,7 +3,7 @@
     :title="$t('ConfirmRunningAssets')"
     :visible="visible"
     :show-buttons="!isRunning"
-    :show-confirm="true"
+    :show-confirm="selectedAssets.length > 0 && !readOnly"
     :show-cancel="true"
     width="1200px"
     @update:visible="$emit('update:visible', $event)"
@@ -17,6 +17,7 @@
             {{ $t('RunnableAssets') }}
           </div>
           <el-checkbox
+            :disabled="readOnly || isRunning"
             :indeterminate="isIndeterminate"
             :model-value="checkAll"
             style="padding-bottom: 5px"
@@ -26,6 +27,7 @@
             {{ $t('All') }}
           </el-checkbox>
           <el-checkbox-group
+            :disabled="readOnly || isRunning"
             :model-value="selectedAssets"
             class="group-assets"
             @change="handleCheckedAssetChange"
@@ -34,7 +36,7 @@
             <el-checkbox
               v-for="asset in runnableAssets"
               :key="asset.id"
-              :label="asset.id"
+              :value="asset.id"
               class="asset-item"
             >
               <div class="asset-item">
@@ -71,6 +73,8 @@ export default {
     Dialog
   },
   props: {
+    readOnly: Boolean,
+    executedAssets: { type: Array, default: () => [] },
     visible: {
       type: Boolean,
       default: false
@@ -102,9 +106,11 @@ export default {
   },
   watch: {
     visible(val) {
-      if (val === true && this.selectedAssets.length === 0) {
-        // 首次打开时，默认选中所有可运行的资产
-        this.selectedAssets = this.runnableAssets.map((item) => item.id)
+      if (val === true) {
+        // 每次确认使用本次权限检查展开后的资产清单。
+        this.selectedAssets = this.readOnly
+          ? [...this.executedAssets]
+          : this.runnableAssets.map((item) => item.id)
       }
     },
     runnableAssets(val) {
@@ -119,6 +125,7 @@ export default {
       this.$emit('update:visible', false)
     },
     onConfirm() {
+      if (this.readOnly || this.isRunning || this.selectedAssets.length === 0) return
       this.$emit('submit', this.selectedAssets, [])
       this.$emit('update:visible', false)
     },

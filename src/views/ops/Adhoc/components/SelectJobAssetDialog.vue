@@ -3,27 +3,50 @@
     <IBox title="selectedAssets" class="asset-card">
       <template #header>
         <div class="asset-card-header">
-          <span class="asset-card-title"
-            >{{ $t('selectedAssets') }} ({{ selectAssets.length }})</span
-          >
-          <el-button v-if="selectAssets.length > 0" link @click="handleClick">
-            {{ $t('pleaseSelectAssets') }}
-          </el-button>
+          <span class="asset-card-title">{{ $t('JobTargets') }}</span>
         </div>
       </template>
+      <div class="target-actions">
+        <el-button @click="directoryDialogVisible = true"
+          ><el-icon><Folder /></el-icon>{{ $t('JobSelectDirectories') }}</el-button
+        >
+        <el-button @click="handleClick"
+          ><el-icon><Plus /></el-icon>{{ $t('Asset') }}</el-button
+        >
+      </div>
+      <p class="target-summary">
+        {{
+          $t('JobTargetCount', {
+            assets: selectAssets.length,
+            directories: selectedDirectories.length
+          })
+        }}
+      </p>
+      <div v-if="selectedDirectories.length" class="directory-list">
+        <div v-for="node in selectedDirectories" :key="node.id" class="directory-row">
+          <el-icon><Folder /></el-icon>
+          <span :title="node.name">{{ node.name }}</span>
+          <el-button text :aria-label="$t('Remove')" @click="removeDirectory(node.id)"
+            ><el-icon><Close /></el-icon
+          ></el-button>
+        </div>
+        <p class="directory-hint">{{ $t('JobDirectoryHelp') }}</p>
+      </div>
       <div
-        v-if="selectAssets.length === 0"
+        v-if="selectAssetRows.length === 0 && selectedDirectories.length === 0"
         class="empty-assets"
         role="button"
         tabindex="0"
-        aria-label="Select assets"
+        :aria-label="$t('pleaseSelectAssets')"
         @click="handleClick()"
+        @keydown.enter.prevent="handleClick()"
+        @keydown.space.prevent="handleClick()"
       >
         <el-icon class="icon"><Plus /></el-icon>
         <span class="title">{{ $t('pleaseSelectAssets') }}</span>
         <span class="subtitle">{{ $t('clickToAdd') }}</span>
       </div>
-      <div v-else class="asset-list">
+      <div v-if="selectAssetRows.length" class="asset-list">
         <div v-for="group in groupedAssets" :key="group.key" class="platform-group">
           <div class="platform-group-header">
             <el-checkbox
@@ -46,7 +69,7 @@
             class="platform-group-assets"
             @change="onCheckboxChange"
           >
-            <el-checkbox v-for="item in group.assets" :key="item.id" :label="item.id">
+            <el-checkbox v-for="item in group.assets" :key="item.id" :value="item.id">
               <span :title="item.name" class="asset-name">{{ item.name }}</span>
               <el-icon
                 class="asset-remove-icon"
@@ -59,6 +82,12 @@
         </div>
       </div>
     </IBox>
+    <JobNodeSelectDialog
+      v-if="directoryDialogVisible"
+      v-model:visible="directoryDialogVisible"
+      :value="selectedDirectories"
+      @confirm="handleDirectories"
+    />
 
     <UserAssetSelectDialog
       v-if="dialogVisible"
@@ -77,11 +106,12 @@
 <script>
 import UserAssetSelectDialog from '@/components/Apps/GrantedAssets/UserAssetSelectDialog.vue'
 import IBox from '@/components/Common/IBox/index.vue'
+import JobNodeSelectDialog from './JobNodeSelectDialog.vue'
 import { loadPlatformIcon } from '@/utils/jms/index'
 
 export default {
   componentName: 'SelectJobAssetDialog',
-  components: { UserAssetSelectDialog, IBox },
+  components: { UserAssetSelectDialog, IBox, JobNodeSelectDialog },
   emits: ['change'],
   props: {
     baseUrl: {
@@ -104,6 +134,8 @@ export default {
   data() {
     return {
       dialogVisible: false,
+      directoryDialogVisible: false,
+      selectedDirectories: [],
       selectAssetRows: [],
       selectAssets: [...this.value]
     }
@@ -128,6 +160,21 @@ export default {
     }
   },
   methods: {
+    emitSelection() {
+      this.$emit(
+        'change',
+        [...this.selectAssets],
+        this.selectedDirectories.map((node) => node.id)
+      )
+    },
+    handleDirectories(nodes) {
+      this.selectedDirectories = nodes
+      this.emitSelection()
+    },
+    removeDirectory(id) {
+      this.selectedDirectories = this.selectedDirectories.filter((node) => node.id !== id)
+      this.emitSelection()
+    },
     handleClick() {
       this.dialogVisible = true
     },
@@ -135,7 +182,6 @@ export default {
       if (valueSelected === undefined) {
         return
       }
-      this.$emit('change', valueSelected)
       rowsAdd.forEach((item) => {
         if (!this.selectAssetRows.find((i) => i.id === item.id)) {
           this.selectAssetRows.push(item)
@@ -144,6 +190,7 @@ export default {
       // 移除已经取消选择的资产
       this.selectAssetRows = this.selectAssetRows.filter((r) => valueSelected.includes(r.id))
       this.selectAssets = valueSelected
+      this.emitSelection()
       this.dialogVisible = false
     },
     handleCancel() {
@@ -154,7 +201,7 @@ export default {
     },
     onCheckboxChange(value) {
       this.selectAssets = value
-      this.$emit('change', value)
+      this.emitSelection()
     },
     isPlatformAllSelected(group) {
       return group.assets.length > 0 && group.assets.every((a) => this.selectAssets.includes(a.id))
@@ -171,18 +218,62 @@ export default {
       } else {
         this.selectAssets = this.selectAssets.filter((id) => !ids.includes(id))
       }
-      this.$emit('change', this.selectAssets)
+      this.emitSelection()
     },
     removeAsset(asset) {
       this.selectAssets = this.selectAssets.filter((id) => id !== asset.id)
       this.selectAssetRows = this.selectAssetRows.filter((r) => r.id !== asset.id)
-      this.$emit('change', this.selectAssets)
+      this.emitSelection()
     }
   }
 }
 </script>
 
 <style lang="scss" scoped>
+.target-actions {
+  display: flex;
+  gap: 8px;
+  .el-button {
+    flex: 1;
+    margin: 0;
+    .el-icon {
+      margin-right: 5px;
+    }
+  }
+}
+.target-summary,
+.directory-hint {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+.directory-list {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+.directory-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  background: var(--el-fill-color-light);
+  margin-bottom: 6px;
+  > span {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .el-button {
+    padding: 4px;
+  }
+}
+.directory-hint {
+  margin: 8px 0 0;
+  line-height: 1.6;
+}
 .asset-select {
   display: flex;
   flex-direction: column;

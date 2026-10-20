@@ -2565,5 +2565,14 @@
   "AddAssetByCIDR": "按 CIDR 添加资产",
   "ZoneCIDRFilterPlaceholder": "输入 IPv4 或 IPv6 CIDR，以逗号分隔，例如 192.168.1.0/24",
   "ZoneCIDRManualHelp": "按 IP 地址筛选后勾选要添加的资产。已属于其他 Zone 的所选资产将迁移到当前 Zone。本次筛选不会修改已保存的 CIDR。",
-  "AddSelectedToZone": "添加所选资产到当前 Zone"
+  "AddSelectedToZone": "添加所选资产到当前 Zone",
+  "JobTargets": "执行目标",
+  "JobSelectDirectories": "选择目录",
+  "JobSelectDirectory": "选择目录：{name}",
+  "JobDirectoryHelp": "包含子目录内已授权的资产。执行前会展开目录并确认实际执行清单。",
+  "JobDirectoryCount": "已选 {count} 个目录",
+  "JobTargetCount": "{directories} 个目录 · {assets} 台单选资产",
+  "JobExecutionAssets": "执行资产 {count} 台",
+  "JobOutputEmpty": "等待执行作业",
+  "JobOutputHelp": "选择资产或目录，输入命令后执行，日志将在这里实时显示。"
 }

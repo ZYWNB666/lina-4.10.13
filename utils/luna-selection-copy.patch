@@ -1,0 +1,215 @@
+diff --git a/ui/koko/composables/terminal/useTerminalInput.ts b/ui/koko/composables/terminal/useTerminalInput.ts
+index 58e3938..47ef3f6 100644
+--- a/ui/koko/composables/terminal/useTerminalInput.ts
++++ b/ui/koko/composables/terminal/useTerminalInput.ts
+@@ -200,7 +200,7 @@ export function useKokoTerminalInput(options: {
+         }
+         return false;
+       }
+-      if (isTerminalCopyChord(event)) {
++      if (isTerminalCopyChord(event, terminal.hasSelection())) {
+         if (event.type === "keydown" && terminal.hasSelection()) {
+           event.preventDefault();
+           void copySelection();
+diff --git a/ui/koko/constants/keyboard.ts b/ui/koko/constants/keyboard.ts
+index 81cb34a..6db57d2 100644
+--- a/ui/koko/constants/keyboard.ts
++++ b/ui/koko/constants/keyboard.ts
+@@ -30,9 +30,13 @@ export enum KeyboardKey {
+ type TerminalChordEvent = Pick<KeyboardEvent, "key" | "altKey" | "ctrlKey" | "metaKey" | "shiftKey">;
+ 
+ /** Copy chords that must not be sent to the remote terminal. */
+-export function isTerminalCopyChord(event: TerminalChordEvent) {
++export function isTerminalCopyChord(event: TerminalChordEvent, hasSelection = false) {
+   if (event.altKey || event.key?.toLowerCase() !== KeyboardKey.C) return false;
+-  return (event.metaKey && !event.ctrlKey) || (event.ctrlKey && event.shiftKey);
++  return (
++    (event.metaKey && !event.ctrlKey) ||
++    (event.ctrlKey && event.shiftKey) ||
++    (hasSelection && isTerminalInterruptChord(event))
++  );
+ }
+ 
+ /** Plain Ctrl+C. Callers must send the interrupt themselves so xterm does not clear the selection. */
+diff --git a/ui/koko/tests/kubernetes/kubernetesWorkspace.test.ts b/ui/koko/tests/kubernetes/kubernetesWorkspace.test.ts
+index cf858ab..9ffe50d 100644
+--- a/ui/koko/tests/kubernetes/kubernetesWorkspace.test.ts
++++ b/ui/koko/tests/kubernetes/kubernetesWorkspace.test.ts
+@@ -20,8 +20,8 @@ describe("kubernetes workspace click typing", () => {
+     expect(kubernetesWorkspace).not.toContain("background-color: transparent !important");
+   });
+ 
+-  it("keeps Ctrl+C as an interrupt and copies only on an explicit chord", () => {
+-    expect(kubernetesWorkspace).toContain("isTerminalCopyChord(event)");
++  it("routes selected-text Ctrl+C through the clipboard permission check", () => {
++    expect(kubernetesWorkspace).toContain("isTerminalCopyChord(event, terminal.hasSelection())");
+     expect(kubernetesWorkspace).not.toContain("event.key.toLowerCase() === KeyboardKey.C && terminal.hasSelection()");
+   });
+ 
+diff --git a/ui/koko/tests/terminal/terminal.test.ts b/ui/koko/tests/terminal/terminal.test.ts
+index 71a77b6..10289d8 100644
+--- a/ui/koko/tests/terminal/terminal.test.ts
++++ b/ui/koko/tests/terminal/terminal.test.ts
+@@ -1,5 +1,6 @@
+ import { HOST_MESSAGE_TYPE, MESSAGE_TYPE } from "@jumpserver/connectors-core";
+ import { readText, writeText } from "clipboard-polyfill";
++import { Terminal } from "@xterm/xterm";
+ import { afterEach, expect, it, vi } from "vitest";
+ import { computed, ref, shallowRef } from "vue";
+ 
+@@ -213,6 +214,7 @@ function keyEvent(partial: Partial<KeyboardEvent> = {}) {
+ 
+ function startContextMenuInput(overrides: {
+   getTerminalConfig: () => { quickPaste?: string; ctrlCAsCtrlZ?: string };
++  terminal?: Terminal;
+   socket?: { send: ReturnType<typeof vi.fn> } | null;
+   isSocketOpen?: () => boolean;
+   inputLocked?: (data?: string) => boolean;
+@@ -230,22 +232,25 @@ function startContextMenuInput(overrides: {
+   let keyHandler: (event: KeyboardEvent) => boolean = () => true;
+   const input = useKokoTerminalInput({
+     container: shallowRef(container as HTMLElement),
+-    terminal: ref({
+-      attachCustomKeyEventHandler: vi.fn((handler: (event: KeyboardEvent) => boolean) => {
+-        keyHandler = handler;
+-      }),
+-      blur: vi.fn(),
+-      focus: vi.fn(),
+-      getSelection: vi.fn(getSelection),
+-      hasSelection: vi.fn(() => Boolean(getSelection())),
+-      onData: (handler: (data: string) => void) => {
+-        onData = handler;
+-      },
+-      onResize: vi.fn(),
+-      onSelectionChange: (handler: () => void) => {
+-        onSelectionChange = handler;
+-      }
+-    } as never),
++    terminal: shallowRef(
++      overrides.terminal ??
++        ({
++          attachCustomKeyEventHandler: vi.fn((handler: (event: KeyboardEvent) => boolean) => {
++            keyHandler = handler;
++          }),
++          blur: vi.fn(),
++          focus: vi.fn(),
++          getSelection: vi.fn(getSelection),
++          hasSelection: vi.fn(() => Boolean(getSelection())),
++          onData: (handler: (data: string) => void) => {
++            onData = handler;
++          },
++          onResize: vi.fn(),
++          onSelectionChange: (handler: () => void) => {
++            onSelectionChange = handler;
++          }
++        } as never)
++    ),
+     socket: ref(overrides.socket === null ? null : ({ send } as never)),
+     terminalId: ref("1"),
+     sessionId: ref("session-1"),
+@@ -404,11 +409,10 @@ it("does not copy when clipboard ACL denies copy", async () => {
+   input.stop();
+ });
+ 
+-it("sends Ctrl+C as an interrupt even when text is selected", () => {
++it("sends Ctrl+C as an interrupt only when there is no selection", () => {
+   vi.mocked(writeText).mockClear();
+   const remapped = startContextMenuInput({
+     getTerminalConfig: () => ({ ctrlCAsCtrlZ: "1" }),
+-    getSelection: () => "selected text",
+     socket: { send: vi.fn() }
+   });
+   const event = keyEvent({ ctrlKey: true });
+@@ -422,7 +426,6 @@ it("sends Ctrl+C as an interrupt even when text is selected", () => {
+ 
+   const zmodem = startContextMenuInput({
+     getTerminalConfig: () => ({}),
+-    getSelection: () => "selected text",
+     socket: { send: vi.fn() },
+     isZmodemActive: () => true
+   });
+@@ -435,6 +438,71 @@ it("sends Ctrl+C as an interrupt even when text is selected", () => {
+   zmodem.input.stop();
+ });
+ 
++it("copies selected text on Ctrl+C without sending input or aborting transfers", async () => {
++  vi.mocked(writeText).mockClear();
++  const context = startContextMenuInput({
++    getTerminalConfig: () => ({ ctrlCAsCtrlZ: "1" }),
++    getSelection: () => "selected text",
++    socket: { send: vi.fn() },
++    isZmodemActive: () => true
++  });
++  const event = keyEvent({ ctrlKey: true });
++  expect(context.keyHandler(event)).toBe(false);
++  expect(context.keyHandler(keyEvent({ type: "keyup", ctrlKey: true }))).toBe(false);
++  await vi.waitFor(() => expect(writeText).toHaveBeenCalledExactlyOnceWith("selected text"));
++  expect(event.preventDefault).toHaveBeenCalled();
++  expect(context.send).not.toHaveBeenCalled();
++  expect(context.abortZmodem).not.toHaveBeenCalled();
++  context.input.stop();
++});
++
++it.each(["denied", "failed"])("does not interrupt when selected-text copy is %s", async (result) => {
++  vi.mocked(writeText).mockClear();
++  if (result === "failed") vi.mocked(writeText).mockRejectedValueOnce(new Error("clipboard denied"));
++  const context = startContextMenuInput({
++    getTerminalConfig: () => ({}),
++    getSelection: () => "selected text",
++    socket: { send: vi.fn() },
++    validateClipboardText: () => result !== "denied"
++  });
++  expect(context.keyHandler(keyEvent({ ctrlKey: true }))).toBe(false);
++  await Promise.resolve();
++  expect(context.send).not.toHaveBeenCalled();
++  if (result === "denied") expect(writeText).not.toHaveBeenCalled();
++  context.input.stop();
++});
++
++it.each([false, true])("handles actual xterm Ctrl+C events (selected=%s)", async (selected) => {
++  const container = document.createElement("div");
++  document.body.append(container);
++  const terminal = new Terminal({ cols: 40, rows: 5 });
++  terminal.open(container);
++  await new Promise<void>((resolve) => terminal.write("selected text", resolve));
++  const context = startContextMenuInput({ getTerminalConfig: () => ({}), terminal });
++  if (selected) terminal.select(0, 0, 8);
++  vi.mocked(writeText).mockClear();
++  terminal.textarea!.dispatchEvent(
++    new KeyboardEvent("keydown", {
++      key: "c",
++      code: "KeyC",
++      keyCode: 67,
++      ctrlKey: true,
++      bubbles: true,
++      cancelable: true
++    })
++  );
++  if (selected) {
++    await vi.waitFor(() => expect(writeText).toHaveBeenCalledExactlyOnceWith("selected"));
++    expect(context.send).not.toHaveBeenCalled();
++  } else {
++    expect(writeText).not.toHaveBeenCalled();
++    expect(context.send).toHaveBeenCalledExactlyOnceWith(buildTerminalInput(1, "\x03"));
++  }
++  context.input.stop();
++  terminal.dispose();
++  container.remove();
++});
++
+ it("copies with Cmd+C and Ctrl+Shift+C without sending the chord", async () => {
+   vi.mocked(writeText).mockClear();
+   const { input, keyHandler, send } = startContextMenuInput({
+diff --git a/ui/koko/workspaces/KubernetesWorkspace.vue b/ui/koko/workspaces/KubernetesWorkspace.vue
+index 34d2787..f61fb55 100644
+--- a/ui/koko/workspaces/KubernetesWorkspace.vue
++++ b/ui/koko/workspaces/KubernetesWorkspace.vue
+@@ -223,7 +223,7 @@ function installClipboardControls(
+   el.addEventListener("copy", onCopy, true);
+   terminal.attachCustomKeyEventHandler((event) => {
+     if (event.key === KeyboardKey.Enter && event.isComposing) return false;
+-    if (isTerminalCopyChord(event)) {
++    if (isTerminalCopyChord(event, terminal.hasSelection())) {
+       if (event.type === "keydown" && terminal.hasSelection()) {
+         event.preventDefault();
+         const text = terminal.getSelection();

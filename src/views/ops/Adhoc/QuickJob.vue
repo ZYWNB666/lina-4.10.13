@@ -21,6 +21,8 @@
     <ConfirmRunAssetsDialog
       v-model:visible="showConfirmRunAssetsDialog"
       :is-running="isRunning"
+      :read-only="viewingExecution"
+      :executed-assets="selectAssets"
       :assets="classifiedAssets"
       @submit="onConfirmRunAsset"
     />
@@ -46,7 +48,6 @@
 </template>
 
 <script>
-import _isequal from 'lodash/isEqual'
 import QuickJobTerm from '@/views/ops/Adhoc/components/QuickJobTerm.vue'
 import CodeEditor from '@/components/Form/FormFields/CodeEditor'
 import Page from '@/layout/components/Page'
@@ -89,6 +90,7 @@ export default {
       showOpenAdhocSaveDialog: false,
       showSetVariableDialog: false,
       showConfirmRunAssetsDialog: false,
+      viewingExecution: false,
       runas: '',
       runasPolicy: 'skip',
       chdir: '',
@@ -313,7 +315,9 @@ export default {
       selectAssets: [],
       selectNodes: [],
       selectHosts: [],
-      lastRequestPayload: null
+      targetNodes: [],
+      isPreparing: false,
+      isCreating: false
     }
   },
   computed: {
@@ -321,7 +325,7 @@ export default {
       return this.$refs.xterm.xterm
     },
     isRunning() {
-      return this.executionInfo.status.value === 'running'
+      return this.executionInfo.status?.value === 'running'
     }
   },
   watch: {
@@ -335,12 +339,20 @@ export default {
     this.enableWS()
     this.initData()
   },
+  beforeUnmount() {
+    clearInterval(this.executionInfo.cancel)
+    this.ws.onmessage = null
+    this.ws.onerror = null
+    this.ws.onopen = null
+    this.ws.close()
+  },
   methods: {
     async initData() {
       this.recoverStatus()
     },
-    handleSelectAssets(assets) {
+    handleSelectAssets(assets, nodes = []) {
       this.selectHosts = assets
+      this.targetNodes = nodes
     },
     recoverStatus() {
       if (this.$route.query.taskId) {
@@ -356,10 +368,12 @@ export default {
             this.toolbar.fold.timeout.value = res.timeout
             this.toolbar.fold.timeout.callback(res.timeout)
             this.command = res.args
+            this.selectAssets = res.assets || []
             this.executionInfo.status = data['status']
             this.executionInfo.summary = data['summary']
             this.executionInfo.timeCost = data['time_cost']
-            this.setCostTimeInterval()
+            if (this.isRunning) this.setCostTimeInterval()
+            this.setBtn()
             this.writeExecutionOutput()
           })
         })
@@ -375,6 +389,9 @@ export default {
     enableWS() {
       const wsURL = createWsUrl('/ws/ops/tasks/log/')
       this.ws = new WebSocket(wsURL)
+      this.ws.onopen = () => {
+        if (this.outputRequested) this.subscribeOutput()
+      }
       this.ws.onerror = (e) => {
         this.xterm.write(this.wrapperError('Connect websocket server error'))
       }
@@ -414,12 +431,18 @@ export default {
       return `\r\n${msg}\r\n`
     },
     writeExecutionOutput() {
-      let msg = this.$t('CommandOutputWait')
+      this.outputRequested = true
+      const msg = this.$t('CommandOutputWait')
       this.xterm.write(`${msg}\r\n`)
-      msg = JSON.stringify({ task: this.currentTaskId })
-      this.ws.send(msg)
+      if (this.ws.readyState === WebSocket.OPEN) this.subscribeOutput()
+    },
+    subscribeOutput() {
+      if (this.subscribedTaskId === this.currentTaskId) return
+      this.subscribedTaskId = this.currentTaskId
+      this.ws.send(JSON.stringify({ task: this.currentTaskId }))
     },
     setCostTimeInterval() {
+      clearInterval(this.executionInfo.cancel)
       this.toolbar.left.run.icon = 'fa fa-spinner fa-spin'
       this.toolbar.left.run.isVisible = true
       this.executionInfo.cancel = setInterval(() => {
@@ -428,20 +451,12 @@ export default {
     },
 
     getSelectedNodesAndHosts() {
-      const hosts = this.selectHosts
-      const nodes = []
-      return { hosts, nodes }
-    },
-    shouldReRequest(payload) {
-      if (!this.lastRequestPayload) return true
-      const current = _.omit(payload, ['args'])
-      const last = _.omit(this.lastRequestPayload, ['args'])
-      return !_isequal(current, last)
+      return { hosts: [...this.selectHosts], nodes: [...this.targetNodes] }
     },
     execute() {
-      // const size = 'rows=' + this.xterm.rows + '&cols=' + this.xterm.cols
+      if (this.isRunning || this.isPreparing || this.isCreating) return
       const { hosts, nodes } = this.getSelectedNodesAndHosts()
-      if (this.selectHosts.length === 0) {
+      if (hosts.length === 0 && nodes.length === 0) {
         this.$message.error(this.$tc('RequiredAssetOrNode'))
         return
       }
@@ -461,26 +476,39 @@ export default {
         runas: this.runas,
         runas_policy: this.runasPolicy
       }
-      if (!this.shouldReRequest(payload)) {
-        this.onConfirmRunAsset(this.selectAssets, this.selectNodes)
-        return
-      }
-
-      this.lastRequestPayload = { ...payload }
-      this.$axios
+      this.isPreparing = true
+      this.toolbar.left.run.disabled = true
+      return this.$axios
         .post('/api/v1/ops/classified-hosts/', {
           ...payload
         })
         .then((data) => {
           this.classifiedAssets = data
-          if (this.classifiedAssets.error.length === 0) {
-            this.onConfirmRunAsset(hosts, nodes)
+          this.viewingExecution = false
+          if (
+            this.classifiedAssets.runnable.length > 0 &&
+            this.classifiedAssets.error.length === 0 &&
+            nodes.length === 0
+          ) {
+            return this.onConfirmRunAsset(
+              this.classifiedAssets.runnable.map((asset) => asset.id),
+              []
+            )
           } else {
             this.showConfirmRunAssetsDialog = true
           }
         })
+        .catch((error) => this.$log.error(error))
+        .finally(() => {
+          this.isPreparing = false
+          this.toolbar.left.run.disabled =
+            this.isRunning || this.isCreating || this.$store.getters.currentOrgIsRoot
+        })
     },
-    onConfirmRunAsset(assets, nodes) {
+    onConfirmRunAsset(assets, nodes = []) {
+      if (this.isRunning || this.isCreating || assets.length === 0) return
+      this.isCreating = true
+      this.toolbar.left.run.disabled = true
       const data = {
         assets: assets,
         nodes: nodes,
@@ -498,8 +526,9 @@ export default {
       if (this.parameters) {
         data.parameters = this.parameters
       }
-      createJob(data)
+      return createJob(data)
         .then((res) => {
+          this.xterm.reset()
           this.executionInfo.timeCost = 0
           this.executionInfo.summary = null
           this.executionInfo.status = { value: 'running', label: this.$t('Running') }
@@ -511,11 +540,15 @@ export default {
           this.selectAssets = assets
           this.selectNodes = nodes
         })
-        .catch(() => {
-          this.lastRequestPayload = null
+        .catch((error) => this.$log.error(error))
+        .finally(() => {
+          this.isCreating = false
+          this.toolbar.left.run.disabled =
+            this.isRunning || this.isCreating || this.$store.getters.currentOrgIsRoot
         })
     },
     viewConfirmRunAssets() {
+      this.viewingExecution = true
       this.showConfirmRunAssetsDialog = true
     },
     stop() {
@@ -542,6 +575,8 @@ export default {
         this.toolbar.left.run.icon = 'fa fa-solid fa-play'
       }
       this.toolbar.left.run.isVisible = this.isRunning
+      this.toolbar.left.run.disabled =
+        this.isRunning || this.isCreating || this.$store.getters.currentOrgIsRoot
       this.toolbar.left.stop.isVisible = !this.isRunning
     },
     onSubmitVariable(parameters) {
@@ -561,7 +596,7 @@ export default {
   gap: 20px;
 
   .select-assets {
-    flex: 0 0 24%;
+    flex: 0 0 280px;
     min-width: 240px;
   }
 
@@ -570,14 +605,16 @@ export default {
     flex: 1;
     flex-direction: column;
     min-width: 0;
+    min-height: 0;
     gap: 20px;
 
     // 编辑器区套一层白色面板，避免直接露出内容区灰底（AppMain #f3f3f4）
     :deep(.code-editor) {
+      box-sizing: border-box;
       padding: 14px 16px;
       background: #fff;
       border: 1px solid var(--color-border);
-      border-radius: 4px;
+      border-radius: 8px;
     }
 
     .xterm-container {
@@ -585,17 +622,29 @@ export default {
       min-height: 240px;
       overflow: hidden;
       border: 1px solid var(--color-border);
-      border-radius: 4px;
+      border-radius: 8px;
 
       & > div {
         height: 100%;
-
-        & :deep(.xterm) {
-          height: calc(100% - 8px);
-          overflow-y: hidden;
-        }
       }
     }
+  }
+}
+@media (max-width: 1100px) {
+  .job-container {
+    flex-direction: column;
+  }
+  .job-container .select-assets {
+    flex: 0 0 auto;
+    max-height: 260px;
+  }
+  .job-container .transition-box {
+    flex: 0 0 auto;
+  }
+  .job-container .transition-box .xterm-container {
+    min-height: 320px;
+    height: 360px;
+    flex: none;
   }
 }
 </style>
