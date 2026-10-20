@@ -21,7 +21,7 @@ ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1 \
 RUN apt-get update && apt-get install -y --no-install-recommends patch \
     && rm -rf /var/lib/apt/lists/* \
     && npm install --global pnpm@11.4.0
-ADD --checksum=sha256:781fe079a2e97f30b2f5291524c6dbeda3b8ba721e38574aeb2226f5dfc49f9d \
+ADD --checksum=sha256:fadcd13c0006d3b0edae00d1415eeacfadb72d93f03848c60e1e01eb4f852092 \
     https://codeload.github.com/jumpserver/luna/tar.gz/6f0ffe532d542cea3aa3d698255b69786e32a42e /tmp/luna.tar.gz
 WORKDIR /data
 RUN tar -xzf /tmp/luna.tar.gz --strip-components=1 -C /data && rm /tmp/luna.tar.gz
